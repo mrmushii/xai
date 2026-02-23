@@ -2,7 +2,7 @@
 
 import { useRef, useMemo, useState, useEffect } from "react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
-import { Html, Grid } from "@react-three/drei";
+import { Grid } from "@react-three/drei";
 import * as THREE from "three";
 
 const PARTICLE_COUNT = 7500;
@@ -37,7 +37,6 @@ const KNOWLEDGE_DOMAINS = [
 
 function buildKnowledgeTree(rng: () => number) {
   const branches: Branch[] = [];
-  const fruitPositions: [number, number, number][] = [];
 
   // ---- Trunk (root → center) ----
   const trunkBase: [number, number, number] = [0, -3.2, 0];
@@ -103,8 +102,6 @@ function buildKnowledgeTree(rng: () => number) {
 
     // ---- Level 2: Sub-topic branches ----
     const subCount = 3 + Math.floor(rng() * 3);
-    let outermostTip = end;
-    let maxDist = 0;
 
     for (let s = 0; s < subCount; s++) {
       const subAngle = domain.angle + (rng() - 0.5) * 1.5;
@@ -120,12 +117,6 @@ function buildKnowledgeTree(rng: () => number) {
         thickness: 0.4,
         depth: 2,
       });
-
-      const dist = subEnd[0]**2 + subEnd[1]**2 + subEnd[2]**2;
-      if (dist > maxDist) {
-        maxDist = dist;
-        outermostTip = subEnd;
-      }
 
       // ---- Level 3: Leaf twigs ----
       const leafCount = 2 + Math.floor(rng() * 4);
@@ -155,12 +146,9 @@ function buildKnowledgeTree(rng: () => number) {
         }
       }
     }
-    
-    // Assign fruit position to the outermost tip of this domain
-    fruitPositions.push(outermostTip);
   });
 
-  return { branches, fruitPositions };
+  return { branches };
 }
 
 /* ---------- Distribute particles along tree branches ---------- */
@@ -300,107 +288,9 @@ function TreeConnections({
   );
 }
 
-/* ---------- Knowledge Fruits ---------- */
-function KnowledgeFruits({ 
-  positions, 
-  scrollProgress,
-  activeNode,
-  setActiveNode
-}: { 
-  positions: [number, number, number][]; 
-  scrollProgress: number;
-  activeNode: number | null;
-  setActiveNode: (idx: number | null) => void;
-}) {
-  const groupRef = useRef<THREE.Group>(null);
-  const { clock } = useThree();
 
-  useFrame(() => {
-    if (!groupRef.current) return;
-    const inTree = scrollProgress > 0.3 && scrollProgress < 0.7;
-    groupRef.current.visible = inTree;
-    if (!inTree) return;
 
-    let alpha = 1;
-    if (scrollProgress < 0.4) alpha = (scrollProgress - 0.3) / 0.1;
-    else if (scrollProgress > 0.6) alpha = 1 - (scrollProgress - 0.6) / 0.1;
-    
-    // Scale fruits based on scroll & active state
-    groupRef.current.children.forEach((child, i) => {
-      const mesh = child as THREE.Mesh;
-      const mat = mesh.material as THREE.MeshBasicMaterial;
-      const isActive = activeNode === i;
-      const t = clock.elapsedTime;
-      const pulse = Math.sin(t * 3 + i) * 0.1;
-      
-      const baseScale = isActive ? 1.5 : 1.0;
-      const targetScale = (baseScale + pulse) * alpha;
-      mesh.scale.setScalar(THREE.MathUtils.lerp(mesh.scale.x, targetScale, 0.1));
-      
-      // Sway with tree gently
-      mesh.position.y = positions[i][1] + Math.sin(t * 0.5 + i) * 0.05;
-      mesh.position.x = positions[i][0] + Math.sin(t * 0.3 + i * 2) * 0.03;
-      mesh.position.z = positions[i][2] + Math.cos(t * 0.4 + i) * 0.03;
-
-      mat.opacity = Math.min(0.9, alpha * (isActive ? 1.0 : 0.7));
-    });
-  });
-
-  return (
-    <group ref={groupRef}>
-      {positions.map((pos, i) => {
-        const domain = KNOWLEDGE_DOMAINS[i];
-        // Height-based color
-        const color = new THREE.Color().setHSL(0.3 + (pos[1] * 0.05), 0.8, 0.6); // Greenish base, varying slightly
-        
-        return (
-          <mesh 
-            key={i} 
-            position={pos} 
-            onPointerOver={() => { document.body.style.cursor = 'pointer'; }}
-            onPointerOut={() => { document.body.style.cursor = 'auto'; }}
-            onClick={(e) => {
-              e.stopPropagation(); // don't trigger canvas click
-              setActiveNode(i);
-            }}
-          >
-            <sphereGeometry args={[0.15, 32, 32]} />
-            <meshBasicMaterial color={color} transparent opacity={0.8} />
-            
-            {activeNode === i && (
-              <Html distanceFactor={8} position={[0, 0, 0]} center zIndexRange={[100, 0]}>
-                <div className="w-72 p-5 rounded-md border border-[#00ff41]/50 bg-black/80 backdrop-blur-xl shadow-[0_0_20px_rgba(0,255,65,0.4)] text-[#00ff41] relative flex flex-col pointer-events-auto font-mono">
-                  <button 
-                    onClick={(e) => { e.stopPropagation(); setActiveNode(null); }}
-                    className="absolute top-2 right-3 text-[#00ff41]/60 hover:text-white transition-colors cursor-pointer text-lg"
-                  >
-                    [X]
-                  </button>
-                  <div className="uppercase text-[10px] tracking-widest text-cyan-400 mb-1 opacity-80">
-                    {`// KNOWLEDGE_NODE_${domain.id.toUpperCase()}`}
-                  </div>
-                  <h3 className="text-xl font-bold mb-3 text-white drop-shadow-[0_0_8px_rgba(255,255,255,0.8)]">
-                    {domain.title}
-                  </h3>
-                  <p className="text-sm text-gray-300 leading-relaxed border-l-2 border-[#00ff41]/40 pl-3">
-                    {domain.desc}
-                  </p>
-                  <div className="mt-4 text-xs font-bold tracking-wider text-[#00ff41] hover:text-white transition-colors cursor-pointer flex items-center gap-2 group">
-                    <span className="w-full h-[1px] bg-gradient-to-r from-[#00ff41]/50 to-transparent"></span>
-                    <span className="whitespace-nowrap group-hover:-translate-x-1 transition-transform">&gt; INITIALIZE</span>
-                  </div>
-                </div>
-              </Html>
-            )}
-          </mesh>
-        );
-      })}
-    </group>
-  );
-}
-
-/* ---------- Main Particle System ---------- */
-function ParticleSystem({ scrollProgress, activeNode, setActiveNode }: { scrollProgress: number, activeNode: number | null, setActiveNode: (idx: number | null) => void }) {
+function ParticleSystem({ scrollProgress }: { scrollProgress: number }) {
   const points0Ref = useRef<THREE.Points>(null);
   const points1Ref = useRef<THREE.Points>(null);
   const { mouse, viewport } = useThree();
@@ -433,7 +323,7 @@ function ParticleSystem({ scrollProgress, activeNode, setActiveNode }: { scrollP
   const data = useMemo(() => {
     const rng = seededRandom(42);
     const chaos = new Float32Array(PARTICLE_COUNT * 3);
-    const { branches, fruitPositions } = buildKnowledgeTree(rng);
+    const { branches } = buildKnowledgeTree(rng);
     const tree = distributeOnTree(branches, PARTICLE_COUNT, rng);
     const explode = new Float32Array(PARTICLE_COUNT * 3);
     const pos = new Float32Array(PARTICLE_COUNT * 3);
@@ -495,7 +385,7 @@ function ParticleSystem({ scrollProgress, activeNode, setActiveNode }: { scrollP
       }
     }
 
-    return { chaos, tree, explode, pos, col, fruitPositions, indices0, indices1 };
+    return { chaos, tree, explode, pos, col, indices0, indices1 };
   }, []);
 
   const { geo0, geo1 } = useMemo(() => {
@@ -517,9 +407,6 @@ function ParticleSystem({ scrollProgress, activeNode, setActiveNode }: { scrollP
 
   useEffect(() => {
     const onClick = (e: MouseEvent) => {
-      // Check if we hit an HTML element before triggering a ripple
-      if ((e.target as HTMLElement).closest('.pointer-events-auto')) return;
-      
       const c = document.querySelector("canvas");
       if (!c) return;
       const r = c.getBoundingClientRect();
@@ -528,11 +415,10 @@ function ParticleSystem({ scrollProgress, activeNode, setActiveNode }: { scrollP
         x: ((e.clientX - r.left) / r.width) * 2 - 1,
         y: -((e.clientY - r.top) / r.height) * 2 + 1,
       };
-      setActiveNode(null); // Click outside clears selection
     };
     window.addEventListener("click", onClick);
     return () => window.removeEventListener("click", onClick);
-  }, [setActiveNode]);
+  }, []);
 
   useFrame((state) => {
     if (!points0Ref.current || !points1Ref.current) return;
@@ -665,12 +551,6 @@ function ParticleSystem({ scrollProgress, activeNode, setActiveNode }: { scrollP
         <pointsMaterial map={texture1} vertexColors size={0.12} sizeAttenuation transparent opacity={0.9} blending={THREE.AdditiveBlending} depthWrite={false} />
       </points>
       <TreeConnections positions={data.pos} scrollProgress={scrollProgress} />
-      <KnowledgeFruits 
-        positions={data.fruitPositions} 
-        scrollProgress={scrollProgress} 
-        activeNode={activeNode} 
-        setActiveNode={setActiveNode} 
-      />
     </group>
   );
 }
@@ -678,7 +558,6 @@ function ParticleSystem({ scrollProgress, activeNode, setActiveNode }: { scrollP
 /* ---------- Export ---------- */
 export default function ParticleField({ scrollProgress: ext }: { scrollProgress?: number }) {
   const [ip, setIp] = useState(0);
-  const [activeNode, setActiveNode] = useState<number | null>(null);
   const ref = useRef<HTMLDivElement>(null);
   const progress = ext !== undefined ? ext : ip;
 
@@ -715,13 +594,13 @@ export default function ParticleField({ scrollProgress: ext }: { scrollProgress?
           sectionColor="#00ff41" 
           sectionSize={1.5}
           cellSize={0.5}
-          fadeDistance={15} 
-          fadeStrength={2} 
+          fadeDistance={10} 
+          fadeStrength={1.5} 
           cellThickness={0.4} 
           sectionThickness={1} 
         />
         
-        <ParticleSystem scrollProgress={progress} activeNode={activeNode} setActiveNode={setActiveNode} />
+        <ParticleSystem scrollProgress={progress} />
       </Canvas>
     </div>
   );
