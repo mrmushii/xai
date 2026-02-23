@@ -2,7 +2,7 @@
 
 import { useRef, useMemo, useState, useEffect } from "react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
-import { Grid } from "@react-three/drei";
+import { Html, Grid } from "@react-three/drei";
 import * as THREE from "three";
 
 const PARTICLE_COUNT = 7500;
@@ -37,6 +37,7 @@ const KNOWLEDGE_DOMAINS = [
 
 function buildKnowledgeTree(rng: () => number) {
   const branches: Branch[] = [];
+  const fruitPositions: [number, number, number][] = [];
 
   // ---- Trunk (root → center) ----
   const trunkBase: [number, number, number] = [0, -3.2, 0];
@@ -102,6 +103,8 @@ function buildKnowledgeTree(rng: () => number) {
 
     // ---- Level 2: Sub-topic branches ----
     const subCount = 3 + Math.floor(rng() * 3);
+    let outermostTip = end;
+    let maxDist = 0;
 
     for (let s = 0; s < subCount; s++) {
       const subAngle = domain.angle + (rng() - 0.5) * 1.5;
@@ -117,6 +120,12 @@ function buildKnowledgeTree(rng: () => number) {
         thickness: 0.4,
         depth: 2,
       });
+
+      const dist = subEnd[0]**2 + subEnd[1]**2 + subEnd[2]**2;
+      if (dist > maxDist) {
+        maxDist = dist;
+        outermostTip = subEnd;
+      }
 
       // ---- Level 3: Leaf twigs ----
       const leafCount = 2 + Math.floor(rng() * 4);
@@ -146,9 +155,12 @@ function buildKnowledgeTree(rng: () => number) {
         }
       }
     }
+    
+    // Assign fruit position to the outermost tip of this domain
+    fruitPositions.push(outermostTip);
   });
 
-  return { branches };
+  return { branches, fruitPositions };
 }
 
 /* ---------- Distribute particles along tree branches ---------- */
@@ -269,7 +281,7 @@ function TreeConnections({
           pa[idx + 3] = positions[j * 3]; pa[idx + 4] = positions[j * 3 + 1]; pa[idx + 5] = positions[j * 3 + 2];
           const pulse = Math.sin(t * 3 + i * 0.05) * 0.5 + 0.5;
           const a = (1 - d / thresh) * alpha * 0.4;
-          // Soft cyan-green
+          // Soft cyan-green (REVERTED intensity)
           ca[idx] = 0.1 * a; ca[idx + 1] = (0.6 + pulse * 0.4) * a; ca[idx + 2] = (0.5 + pulse * 0.2) * a;
           ca[idx + 3] = ca[idx]; ca[idx + 4] = ca[idx + 1]; ca[idx + 5] = ca[idx + 2];
           cnt++;
@@ -288,9 +300,107 @@ function TreeConnections({
   );
 }
 
+/* ---------- Knowledge Fruits ---------- */
+function KnowledgeFruits({ 
+  positions, 
+  scrollProgress,
+  activeNode,
+  setActiveNode
+}: { 
+  positions: [number, number, number][]; 
+  scrollProgress: number;
+  activeNode: number | null;
+  setActiveNode: (idx: number | null) => void;
+}) {
+  const groupRef = useRef<THREE.Group>(null);
+  const { clock } = useThree();
 
+  useFrame(() => {
+    if (!groupRef.current) return;
+    const inTree = scrollProgress > 0.3 && scrollProgress < 0.7;
+    groupRef.current.visible = inTree;
+    if (!inTree) return;
 
-function ParticleSystem({ scrollProgress }: { scrollProgress: number }) {
+    let alpha = 1;
+    if (scrollProgress < 0.4) alpha = (scrollProgress - 0.3) / 0.1;
+    else if (scrollProgress > 0.6) alpha = 1 - (scrollProgress - 0.6) / 0.1;
+    
+    // Scale fruits based on scroll & active state
+    groupRef.current.children.forEach((child, i) => {
+      const mesh = child as THREE.Mesh;
+      const mat = mesh.material as THREE.MeshBasicMaterial;
+      const isActive = activeNode === i;
+      const t = clock.elapsedTime;
+      const pulse = Math.sin(t * 3 + i) * 0.1;
+      
+      const baseScale = isActive ? 1.5 : 1.0;
+      const targetScale = (baseScale + pulse) * alpha;
+      mesh.scale.setScalar(THREE.MathUtils.lerp(mesh.scale.x, targetScale, 0.1));
+      
+      // Sway gently relative to local coords
+      mesh.position.y = positions[i][1] + Math.sin(t * 0.5 + i) * 0.05;
+      mesh.position.x = positions[i][0] + Math.sin(t * 0.3 + i * 2) * 0.03;
+      mesh.position.z = positions[i][2] + Math.cos(t * 0.4 + i) * 0.03;
+
+      mat.opacity = Math.min(0.9, alpha * (isActive ? 1.0 : 0.7));
+    });
+  });
+
+  return (
+    <group ref={groupRef}>
+      {positions.map((pos, i) => {
+        const domain = KNOWLEDGE_DOMAINS[i];
+        const color = new THREE.Color().setHSL(0.3 + (pos[1] * 0.05), 0.8, 0.6); 
+        
+        return (
+          <mesh 
+            key={i} 
+            position={pos} 
+            onPointerOver={() => { document.body.style.cursor = 'pointer'; }}
+            onPointerOut={() => { document.body.style.cursor = 'auto'; }}
+            onClick={(e) => {
+              e.stopPropagation(); 
+              setActiveNode(i);
+            }}
+          >
+            <sphereGeometry args={[0.15, 32, 32]} />
+            <meshBasicMaterial color={color} transparent opacity={0.8} />
+            
+            {activeNode === i && (
+              <Html distanceFactor={8} position={[0, 0, 0]} center zIndexRange={[100, 0]}>
+                <div className="w-72 p-5 rounded-md border border-[#00ff41]/50 bg-black/80 backdrop-blur-xl shadow-[0_0_20px_rgba(0,255,65,0.4)] text-[#00ff41] relative flex flex-col pointer-events-auto font-mono">
+                  <button 
+                    onClick={(e) => { e.stopPropagation(); setActiveNode(null); }}
+                    className="absolute top-2 right-3 text-[#00ff41]/60 hover:text-white transition-colors cursor-pointer text-lg"
+                  >
+                    [X]
+                  </button>
+                  <div className="uppercase text-[10px] tracking-widest text-cyan-400 mb-1 opacity-80">
+                    {`// KNOWLEDGE_NODE_${domain.id.toUpperCase()}`}
+                  </div>
+                  <h3 className="text-xl font-bold mb-3 text-white drop-shadow-[0_0_8px_rgba(255,255,255,0.8)]">
+                    {domain.title}
+                  </h3>
+                  <p className="text-sm text-gray-300 leading-relaxed border-l-2 border-[#00ff41]/40 pl-3">
+                    {domain.desc}
+                  </p>
+                  <div className="mt-4 text-xs font-bold tracking-wider text-[#00ff41] hover:text-white transition-colors cursor-pointer flex items-center gap-2 group">
+                    <span className="w-full h-[1px] bg-gradient-to-r from-[#00ff41]/50 to-transparent"></span>
+                    <span className="whitespace-nowrap group-hover:-translate-x-1 transition-transform">&gt; INITIALIZE</span>
+                  </div>
+                </div>
+              </Html>
+            )}
+          </mesh>
+        );
+      })}
+    </group>
+  );
+}
+
+/* ---------- Main Particle System ---------- */
+function ParticleSystem({ scrollProgress, activeNode, setActiveNode }: { scrollProgress: number, activeNode: number | null, setActiveNode: (idx: number | null) => void }) {
+  const groupRef = useRef<THREE.Group>(null);
   const points0Ref = useRef<THREE.Points>(null);
   const points1Ref = useRef<THREE.Points>(null);
   const { mouse, viewport } = useThree();
@@ -323,7 +433,7 @@ function ParticleSystem({ scrollProgress }: { scrollProgress: number }) {
   const data = useMemo(() => {
     const rng = seededRandom(42);
     const chaos = new Float32Array(PARTICLE_COUNT * 3);
-    const { branches } = buildKnowledgeTree(rng);
+    const { branches, fruitPositions } = buildKnowledgeTree(rng);
     const tree = distributeOnTree(branches, PARTICLE_COUNT, rng);
     const explode = new Float32Array(PARTICLE_COUNT * 3);
     const pos = new Float32Array(PARTICLE_COUNT * 3);
@@ -355,7 +465,7 @@ function ParticleSystem({ scrollProgress }: { scrollProgress: number }) {
       pos[i * 3 + 1] = chaos[i * 3 + 1];
       pos[i * 3 + 2] = chaos[i * 3 + 2];
 
-      // Colors based on vertical position (tree height)
+      // Colors based on vertical position (tree height) - REVERTED intensities
       const height = tree[i * 3 + 1]; 
       if (height < -2.0) {
         // Deep roots: earthy brown-purple
@@ -385,7 +495,7 @@ function ParticleSystem({ scrollProgress }: { scrollProgress: number }) {
       }
     }
 
-    return { chaos, tree, explode, pos, col, indices0, indices1 };
+    return { chaos, tree, explode, pos, col, fruitPositions, indices0, indices1 };
   }, []);
 
   const { geo0, geo1 } = useMemo(() => {
@@ -407,6 +517,8 @@ function ParticleSystem({ scrollProgress }: { scrollProgress: number }) {
 
   useEffect(() => {
     const onClick = (e: MouseEvent) => {
+      if ((e.target as HTMLElement).closest('.pointer-events-auto')) return;
+      
       const c = document.querySelector("canvas");
       if (!c) return;
       const r = c.getBoundingClientRect();
@@ -415,13 +527,14 @@ function ParticleSystem({ scrollProgress }: { scrollProgress: number }) {
         x: ((e.clientX - r.left) / r.width) * 2 - 1,
         y: -((e.clientY - r.top) / r.height) * 2 + 1,
       };
+      setActiveNode(null); 
     };
     window.addEventListener("click", onClick);
     return () => window.removeEventListener("click", onClick);
-  }, []);
+  }, [setActiveNode]);
 
   useFrame((state) => {
-    if (!points0Ref.current || !points1Ref.current) return;
+    if (!points0Ref.current || !points1Ref.current || !groupRef.current) return;
     const posA = points0Ref.current.geometry.attributes.position as THREE.BufferAttribute;
     const colA = points0Ref.current.geometry.attributes.color as THREE.BufferAttribute;
     const p = posA.array as Float32Array;
@@ -460,10 +573,10 @@ function ParticleSystem({ scrollProgress }: { scrollProgress: number }) {
       p[i3 + 1] += (ty - p[i3 + 1]) * 0.08;
       p[i3 + 2] += (tz - p[i3 + 2]) * 0.08;
 
-      // Gentle sway for branches (leaves sway more) - Banyan tree swaying densely
+      // Gentle sway for branches (leaves sway more)
       if (inTree) {
         const height = data.tree[i3 + 1];
-        const swayAmount = Math.max(0, (height + 2) * 0.004); // higher = more sway
+        const swayAmount = Math.max(0, (height + 2) * 0.004); 
         p[i3] += Math.sin(t * 0.4 + i * 0.02) * swayAmount;
         p[i3 + 2] += Math.cos(t * 0.3 + i * 0.015) * swayAmount * 0.6;
       } else {
@@ -471,10 +584,10 @@ function ParticleSystem({ scrollProgress }: { scrollProgress: number }) {
         p[i3 + 1] += Math.cos(t * 0.2 + i * 0.015) * 0.005;
       }
 
-      // Energy flow: pulse traveling up the tree (root → canopy)
+      // Energy flow (REVERTED intensity)
       if (inTree) {
         const treeY = data.tree[i3 + 1];
-        const flowPos = ((t * 1.2) % 8) - 4.0; // bottom to top
+        const flowPos = ((t * 1.2) % 8) - 4.0;
         const distFromFlow = Math.abs(treeY - flowPos);
         if (distFromFlow < 0.5) {
           const fi = 1 - distFromFlow / 0.5;
@@ -482,7 +595,6 @@ function ParticleSystem({ scrollProgress }: { scrollProgress: number }) {
           c[i3 + 1] = Math.min(1, c[i3 + 1] + fi * 0.4);
           c[i3 + 2] = Math.min(1, c[i3 + 2] + fi * 0.2);
         } else {
-          // Decay back
           c[i3] *= 0.995; c[i3 + 1] *= 0.995; c[i3 + 2] *= 0.995;
         }
       }
@@ -505,10 +617,10 @@ function ParticleSystem({ scrollProgress }: { scrollProgress: number }) {
         }
       }
 
-      // Mouse interaction
+      // Mouse interaction (REVERTED repel force)
       const dx = p[i3] - mx, dy = p[i3 + 1] - my;
       const dist = Math.sqrt(dx * dx + dy * dy);
-      const ir = inTree ? 1.8 : 1.0;
+      const ir = inTree ? 1.8 : 1.0; 
       if (dist < ir) {
         const nf = 1 - dist / ir;
         const gl = inTree ? nf * 1.8 : nf * 0.4;
@@ -537,13 +649,12 @@ function ParticleSystem({ scrollProgress }: { scrollProgress: number }) {
     posA.needsUpdate = true;
     colA.needsUpdate = true;
 
-    // Gentle tree rotation
-    points0Ref.current.rotation.y = Math.sin(t * 0.05) * 0.3;
-    points1Ref.current.rotation.y = Math.sin(t * 0.05) * 0.3;
+    // Apply rotation to the entire group so fruits orbit perfectly with the tree
+    groupRef.current.rotation.y = Math.sin(t * 0.05) * 0.3;
   });
 
   return (
-    <group>
+    <group ref={groupRef}>
       <points ref={points0Ref} geometry={geo0}>
         <pointsMaterial map={texture0} vertexColors size={0.12} sizeAttenuation transparent opacity={0.9} blending={THREE.AdditiveBlending} depthWrite={false} />
       </points>
@@ -551,6 +662,12 @@ function ParticleSystem({ scrollProgress }: { scrollProgress: number }) {
         <pointsMaterial map={texture1} vertexColors size={0.12} sizeAttenuation transparent opacity={0.9} blending={THREE.AdditiveBlending} depthWrite={false} />
       </points>
       <TreeConnections positions={data.pos} scrollProgress={scrollProgress} />
+      <KnowledgeFruits 
+        positions={data.fruitPositions} 
+        scrollProgress={scrollProgress} 
+        activeNode={activeNode} 
+        setActiveNode={setActiveNode} 
+      />
     </group>
   );
 }
@@ -558,6 +675,7 @@ function ParticleSystem({ scrollProgress }: { scrollProgress: number }) {
 /* ---------- Export ---------- */
 export default function ParticleField({ scrollProgress: ext }: { scrollProgress?: number }) {
   const [ip, setIp] = useState(0);
+  const [activeNode, setActiveNode] = useState<number | null>(null);
   const ref = useRef<HTMLDivElement>(null);
   const progress = ext !== undefined ? ext : ip;
 
@@ -589,18 +707,18 @@ export default function ParticleField({ scrollProgress: ext }: { scrollProgress?
         {/* Matrix Floor Grid */}
         <Grid 
           position={[0, -3.5, 0]} 
-          args={[30, 30]} 
+          args={[60, 60]} 
           cellColor="#00ff41" 
           sectionColor="#00ff41" 
           sectionSize={1.5}
           cellSize={0.5}
-          fadeDistance={10} 
-          fadeStrength={1.5} 
-          cellThickness={0.4} 
-          sectionThickness={1} 
+          fadeDistance={25} 
+          fadeStrength={5} 
+          cellThickness={0.3} 
+          sectionThickness={0.8} 
         />
         
-        <ParticleSystem scrollProgress={progress} />
+        <ParticleSystem scrollProgress={progress} activeNode={activeNode} setActiveNode={setActiveNode} />
       </Canvas>
     </div>
   );
