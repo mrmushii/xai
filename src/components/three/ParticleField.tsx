@@ -4,7 +4,7 @@ import { useRef, useMemo, useState, useEffect } from "react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import * as THREE from "three";
 
-const PARTICLE_COUNT = 3500;
+const PARTICLE_COUNT = 4000;
 
 /* ---------- Seeded Random ---------- */
 function seededRandom(seed: number) {
@@ -15,101 +15,117 @@ function seededRandom(seed: number) {
   };
 }
 
-/* ---------- Simple noise for brain folds (gyri/sulci) ---------- */
-function noise3D(x: number, y: number, z: number): number {
-  const n =
-    Math.sin(x * 1.7 + y * 3.1) * 0.5 +
-    Math.sin(y * 2.3 + z * 1.9) * 0.3 +
-    Math.sin(z * 3.7 + x * 2.1) * 0.2 +
-    Math.sin(x * 5.3 + y * 4.7 + z * 3.1) * 0.15;
-  return n;
-}
-
-/* ---------- Brain Surface Generator ---------- */
+/* ---------- Brain Shape: Two Hemispheres ---------- */
 /*
-  Generates points on a human brain surface:
-  - Two hemispheres with a longitudinal fissure
-  - Wider frontal lobe, narrower occipital
-  - Temporal lobes extending downward
-  - Surface perturbation for gyri/sulci (folds)
-  - Cerebellum bump at the back-bottom
-  - Brain stem hint at the base
+  The most recognizable brain shape: TWO WALNUT HALVES.
+  Each hemisphere is an egg/oval shape with:
+  - Deep central fissure (medial longitudinal fissure)
+  - Wrinkled surface (gyri & sulci)
+  - Wider at top-back, narrower at front-bottom
+  - Flat inner face where they meet
+  
+  Coordinate system: X = left/right, Y = up/down, Z = front/back
+  Particles placed on SURFACE ONLY for clear shape definition.
 */
-function generateBrainPosition(
-  t: number,     // 0→1, parameterizes the surface
+
+function generateHemisphere(
   rng: () => number,
-  scale: number
+  side: 1 | -1, // +1 = right, -1 = left
 ): [number, number, number] {
-  // Choose hemisphere: left or right
-  const hemisphere = rng() > 0.5 ? 1 : -1;
+  // Spherical coordinates for surface sampling
+  const u = Math.acos(1 - 2 * rng()); // polar (0=top, PI=bottom) — uniform distribution on sphere
+  const v = rng() * Math.PI * 2;       // azimuthal
 
-  // Spherical sampling on a hemisphere
-  const u = rng() * Math.PI; // polar angle (top to bottom)
-  const v = rng() * Math.PI; // azimuthal (front to back, half-sphere per side)
+  // Brain hemisphere profile (egg-shaped, not a perfect sphere)
+  // Wider at the back-top, narrower at the front-bottom
+  const sinU = Math.sin(u);
+  const cosU = Math.cos(u);
+  const sinV = Math.sin(v);
+  const cosV = Math.cos(v);
 
-  // Base ellipsoid dimensions (brain proportions)
-  // X = left-right (width), Y = top-bottom (height), Z = front-back (length)
-  const baseWidth = 1.8;  // half-width of each hemisphere
-  const baseHeight = 2.2; // top-to-bottom
-  const baseLength = 2.8; // front-to-back (brains are longer than wide)
+  // Radii: brain is ~140mm L, ~120mm W (per hemisphere), ~100mm H
+  const rX = 0.55;   // half-width of one hemisphere
+  const rY = 0.75;   // height (top to bottom)
+  const rZ = 0.9;    // length (front to back)
 
-  // Asymmetric profile: frontal lobe wider, occipital narrower
-  const frontBackT = Math.cos(v); // -1 (back) to 1 (front)
-  const widthMod = 1.0 + frontBackT * 0.15; // wider at front
-  const heightMod = 1.0 - Math.abs(frontBackT) * 0.1;
+  // Shape modifiers for realistic proportions:
+  // 1. Flatter on the bottom (brain base)
+  const bottomFlatten = cosU < 0 ? 0.5 + 0.5 * (1 + cosU) : 1.0;
+  // 2. Wider in back, narrower in front (frontal lobe is narrower)
+  const frontNarrow = 1.0 + cosV * 0.08;
+  // 3. The medial (inner) face is flatter — squish the inner side
+  const medialFlatten = 0.85;
 
-  // Temporal lobe: widen and push down at the sides
-  const topBottomT = Math.cos(u); // 1 (top) to -1 (bottom)
-  const temporalBulge = topBottomT < -0.2 ? (1 + Math.abs(topBottomT + 0.2) * 0.6) : 1.0;
+  // Base surface point
+  let x = sinU * sinV * rX * frontNarrow;
+  let y = cosU * rY * bottomFlatten;
+  let z = sinU * cosV * rZ;
 
-  // Surface position on ellipsoid
-  let x = hemisphere * Math.sin(u) * Math.sin(v) * baseWidth * widthMod * temporalBulge;
-  let y = Math.cos(u) * baseHeight * heightMod;
-  let z = Math.cos(v) * baseLength;
-
-  // Longitudinal fissure: push hemispheres apart slightly
-  x += hemisphere * 0.15;
-
-  // Flatten the bottom slightly (brain sits on the skull base)
-  if (y < -baseHeight * 0.6) {
-    y = -baseHeight * 0.6 + (y + baseHeight * 0.6) * 0.3;
+  // Flatten the inner face: reduce x when pointing inward
+  if (side * x < 0) {
+    x *= medialFlatten;
   }
 
-  // Cerebellum: extra particles at back-bottom
-  if (rng() < 0.12) {
-    const cAngle = rng() * Math.PI * 2;
-    const cR = 0.5 + rng() * 0.6;
-    x = Math.cos(cAngle) * cR * 1.2;
-    y = -baseHeight * 0.55 - rng() * 0.5;
-    z = -baseLength * 0.6 - rng() * 0.4;
-  }
+  // Shift hemisphere outward to create the central fissure gap
+  x += side * 0.18;
 
-  // Brain stem: thin column at bottom-back
-  if (rng() < 0.04) {
-    x = (rng() - 0.5) * 0.3;
-    y = -baseHeight * 0.7 - rng() * 0.8;
-    z = -baseLength * 0.3 + (rng() - 0.5) * 0.2;
-  }
+  // Wrinkles (gyri/sulci): multiple frequencies for realistic folds
+  // These are the brain's most recognizable surface feature
+  const wx = x * 12, wy = y * 10, wz = z * 8;
+  const wrinkle =
+    Math.sin(wx + wy * 0.7) * 0.025 +
+    Math.sin(wy * 1.3 + wz * 0.9) * 0.022 +
+    Math.sin(wz * 1.5 + wx * 0.6) * 0.018 +
+    Math.sin(wx * 2.1 + wy * 1.7 + wz * 1.2) * 0.012;
 
-  // Gyri/sulci: surface perturbation (folds)
-  const foldIntensity = 0.18;
-  const fold = noise3D(x * 3, y * 3, z * 3) * foldIntensity;
-  // Push along the surface normal (radial direction)
-  const dist = Math.sqrt(x * x + y * y + z * z) || 1;
-  x += (x / dist) * fold;
-  y += (y / dist) * fold;
-  z += (z / dist) * fold;
+  // Displace along surface normal (approximately radial)
+  const len = Math.sqrt(x * x + y * y + z * z) || 1;
+  x += (x / len) * wrinkle;
+  y += (y / len) * wrinkle;
+  z += (z / len) * wrinkle;
 
-  // Fill some interior volume for density (not all on surface)
-  const depthFactor = 0.6 + rng() * 0.4; // 60-100% radius
-  x *= depthFactor;
-  y *= depthFactor;
-  z *= depthFactor;
+  // Keep particles strictly on surface (95-100% radius) for sharp shape
+  const depth = 0.95 + rng() * 0.05;
+  // But also add a small percentage inside for density
+  const isInterior = rng() < 0.08;
+  const finalDepth = isInterior ? 0.5 + rng() * 0.45 : depth;
+  x = (x - side * 0.18) * finalDepth + side * 0.18;
+  y *= finalDepth;
+  z *= finalDepth;
 
-  return [x * scale, y * scale, z * scale];
+  return [x, y, z];
 }
 
-/* ---------- Neural Connection Lines (synapses) ---------- */
+/* ---------- Cerebellum (at back-bottom) ---------- */
+function generateCerebellum(rng: () => number): [number, number, number] {
+  const side = rng() > 0.5 ? 1 : -1;
+  const u = Math.acos(1 - 2 * rng());
+  const v = rng() * Math.PI * 2;
+
+  let x = Math.sin(u) * Math.sin(v) * 0.35 * side;
+  let y = Math.cos(u) * 0.22 - 0.65;     // sits below the cerebrum
+  let z = Math.sin(u) * Math.cos(v) * 0.3 - 0.55; // sits behind
+
+  // Cerebellum has tight horizontal ridges (folia)
+  const ridge = Math.sin(y * 40) * 0.012;
+  x += ridge;
+
+  x += side * 0.05; // slight gap
+
+  return [x, y, z];
+}
+
+/* ---------- Brain Stem ---------- */
+function generateBrainStem(rng: () => number): [number, number, number] {
+  const angle = rng() * Math.PI * 2;
+  const r = 0.06 + rng() * 0.04;
+  const x = Math.cos(angle) * r;
+  const y = -0.7 - rng() * 0.4;
+  const z = -0.4 + Math.sin(angle) * r * 0.5;
+  return [x, y, z];
+}
+
+/* ---------- Synaptic Connection Lines ---------- */
 function SynapticConnections({
   positions,
   scrollProgress,
@@ -122,92 +138,63 @@ function SynapticConnections({
 
   const geometry = useMemo(() => {
     const geo = new THREE.BufferGeometry();
-    const maxConnections = 4000;
-    const linePositions = new Float32Array(maxConnections * 6);
-    const lineColors = new Float32Array(maxConnections * 6);
-    geo.setAttribute("position", new THREE.BufferAttribute(linePositions, 3));
-    geo.setAttribute("color", new THREE.BufferAttribute(lineColors, 3));
+    const max = 5000;
+    const lp = new Float32Array(max * 6);
+    const lc = new Float32Array(max * 6);
+    geo.setAttribute("position", new THREE.BufferAttribute(lp, 3));
+    geo.setAttribute("color", new THREE.BufferAttribute(lc, 3));
     return geo;
   }, []);
 
   useFrame(() => {
     if (!linesRef.current) return;
-
-    const gridPhase = scrollProgress > 0.3 && scrollProgress < 0.65;
-    if (!gridPhase) {
+    const inBrain = scrollProgress > 0.3 && scrollProgress < 0.65;
+    if (!inBrain) {
       linesRef.current.visible = false;
       return;
     }
-
     linesRef.current.visible = true;
-    const posAttr = linesRef.current.geometry.attributes
-      .position as THREE.BufferAttribute;
-    const colAttr = linesRef.current.geometry.attributes
-      .color as THREE.BufferAttribute;
-    const posArr = posAttr.array as Float32Array;
-    const colArr = colAttr.array as Float32Array;
+
+    const posAttr = linesRef.current.geometry.attributes.position as THREE.BufferAttribute;
+    const colAttr = linesRef.current.geometry.attributes.color as THREE.BufferAttribute;
+    const pa = posAttr.array as Float32Array;
+    const ca = colAttr.array as Float32Array;
     const t = clock.elapsedTime;
 
-    // Fade in/out
-    let lineOpacity = 1;
-    if (scrollProgress < 0.4) lineOpacity = (scrollProgress - 0.3) / 0.1;
-    else if (scrollProgress > 0.55) lineOpacity = 1 - (scrollProgress - 0.55) / 0.1;
+    let alpha = 1;
+    if (scrollProgress < 0.38) alpha = (scrollProgress - 0.3) / 0.08;
+    else if (scrollProgress > 0.57) alpha = 1 - (scrollProgress - 0.57) / 0.08;
 
-    const connectionThreshold = 0.55;
-    let lineCount = 0;
-    const maxConnections = 4000;
+    const thresh = 0.18; // tight threshold — only very nearby particles connect
+    let cnt = 0;
+    const max = 5000;
 
-    // Sample subset for performance (not all N² pairs)
-    const step = 3;
-    for (let i = 0; i < PARTICLE_COUNT && lineCount < maxConnections; i += step) {
-      for (
-        let j = i + 1;
-        j < Math.min(i + 60, PARTICLE_COUNT) && lineCount < maxConnections;
-        j++
-      ) {
+    for (let i = 0; i < PARTICLE_COUNT && cnt < max; i += 2) {
+      for (let j = i + 1; j < Math.min(i + 25, PARTICLE_COUNT) && cnt < max; j++) {
         const dx = positions[i * 3] - positions[j * 3];
         const dy = positions[i * 3 + 1] - positions[j * 3 + 1];
         const dz = positions[i * 3 + 2] - positions[j * 3 + 2];
-        const dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
-
-        if (dist < connectionThreshold) {
-          const idx = lineCount * 6;
-          posArr[idx] = positions[i * 3];
-          posArr[idx + 1] = positions[i * 3 + 1];
-          posArr[idx + 2] = positions[i * 3 + 2];
-          posArr[idx + 3] = positions[j * 3];
-          posArr[idx + 4] = positions[j * 3 + 1];
-          posArr[idx + 5] = positions[j * 3 + 2];
-
-          // Neural firing pulse: color travels along connections
-          const pulse = Math.sin(t * 3 + i * 0.05) * 0.5 + 0.5;
-          const alpha =
-            (1 - dist / connectionThreshold) * lineOpacity * 0.5;
-          colArr[idx] = (0.3 + pulse * 0.5) * alpha;
-          colArr[idx + 1] = (0.1 + pulse * 0.8) * alpha;
-          colArr[idx + 2] = 0.9 * alpha;
-          colArr[idx + 3] = (0.3 + pulse * 0.5) * alpha;
-          colArr[idx + 4] = (0.1 + pulse * 0.8) * alpha;
-          colArr[idx + 5] = 0.9 * alpha;
-          lineCount++;
+        const d = Math.sqrt(dx * dx + dy * dy + dz * dz);
+        if (d < thresh) {
+          const idx = cnt * 6;
+          pa[idx] = positions[i * 3]; pa[idx + 1] = positions[i * 3 + 1]; pa[idx + 2] = positions[i * 3 + 2];
+          pa[idx + 3] = positions[j * 3]; pa[idx + 4] = positions[j * 3 + 1]; pa[idx + 5] = positions[j * 3 + 2];
+          const pulse = Math.sin(t * 2 + i * 0.03) * 0.5 + 0.5;
+          const a = (1 - d / thresh) * alpha * 0.5;
+          ca[idx] = (0.3 + pulse * 0.3) * a; ca[idx + 1] = (0.1 + pulse * 0.5) * a; ca[idx + 2] = 0.85 * a;
+          ca[idx + 3] = ca[idx]; ca[idx + 4] = ca[idx + 1]; ca[idx + 5] = ca[idx + 2];
+          cnt++;
         }
       }
     }
-
-    linesRef.current.geometry.setDrawRange(0, lineCount * 2);
+    linesRef.current.geometry.setDrawRange(0, cnt * 2);
     posAttr.needsUpdate = true;
     colAttr.needsUpdate = true;
   });
 
   return (
     <lineSegments ref={linesRef} geometry={geometry}>
-      <lineBasicMaterial
-        vertexColors
-        transparent
-        opacity={0.35}
-        blending={THREE.AdditiveBlending}
-        depthWrite={false}
-      />
+      <lineBasicMaterial vertexColors transparent opacity={0.4} blending={THREE.AdditiveBlending} depthWrite={false} />
     </lineSegments>
   );
 }
@@ -216,245 +203,199 @@ function SynapticConnections({
 function ParticleSystem({ scrollProgress }: { scrollProgress: number }) {
   const pointsRef = useRef<THREE.Points>(null);
   const { mouse, viewport } = useThree();
-  const clickPulseRef = useRef({ time: -10, x: 0, y: 0 }); // for click interaction
+  const clickPulseRef = useRef({ time: -10, x: 0, y: 0 });
 
-  const { chaosPositions, gridPositions, explodePositions, positions, colors, sizes } =
-    useMemo(() => {
-      const rng = seededRandom(42);
-      const chaos = new Float32Array(PARTICLE_COUNT * 3);
-      const grid = new Float32Array(PARTICLE_COUNT * 3);
-      const explode = new Float32Array(PARTICLE_COUNT * 3);
-      const pos = new Float32Array(PARTICLE_COUNT * 3);
-      const col = new Float32Array(PARTICLE_COUNT * 3);
-      const sz = new Float32Array(PARTICLE_COUNT);
+  const data = useMemo(() => {
+    const rng = seededRandom(42);
+    const chaos = new Float32Array(PARTICLE_COUNT * 3);
+    const brain = new Float32Array(PARTICLE_COUNT * 3);
+    const explode = new Float32Array(PARTICLE_COUNT * 3);
+    const pos = new Float32Array(PARTICLE_COUNT * 3);
+    const col = new Float32Array(PARTICLE_COUNT * 3);
 
-      for (let i = 0; i < PARTICLE_COUNT; i++) {
-        // Chaos: random sphere
-        const theta = rng() * Math.PI * 2;
-        const phi = Math.acos(2 * rng() - 1);
-        const r = 3 + rng() * 5;
-        chaos[i * 3] = r * Math.sin(phi) * Math.cos(theta);
-        chaos[i * 3 + 1] = r * Math.sin(phi) * Math.sin(theta);
-        chaos[i * 3 + 2] = r * Math.cos(phi);
+    // Allocation: 88% cerebrum, 9% cerebellum, 3% brain stem
+    const cerebellumStart = Math.floor(PARTICLE_COUNT * 0.88);
+    const stemStart = Math.floor(PARTICLE_COUNT * 0.97);
 
-        // Brain shape positions
-        const [bx, by, bz] = generateBrainPosition(i / PARTICLE_COUNT, rng, 1.0);
-        grid[i * 3] = bx;
-        grid[i * 3 + 1] = by;
-        grid[i * 3 + 2] = bz;
+    const SCALE = 2.2; // overall brain scale
 
-        // Explode: outward from brain
-        const eTheta = rng() * Math.PI * 2;
-        const ePhi = Math.acos(2 * rng() - 1);
-        const eR = 14 + rng() * 12;
-        explode[i * 3] = eR * Math.sin(ePhi) * Math.cos(eTheta);
-        explode[i * 3 + 1] = eR * Math.sin(ePhi) * Math.sin(eTheta);
-        explode[i * 3 + 2] = eR * Math.cos(ePhi);
+    for (let i = 0; i < PARTICLE_COUNT; i++) {
+      // Chaos: scattered sphere
+      const ct = rng() * Math.PI * 2;
+      const cp = Math.acos(2 * rng() - 1);
+      const cr = 3 + rng() * 5;
+      chaos[i * 3] = cr * Math.sin(cp) * Math.cos(ct);
+      chaos[i * 3 + 1] = cr * Math.sin(cp) * Math.sin(ct);
+      chaos[i * 3 + 2] = cr * Math.cos(cp);
 
-        // Start at chaos
-        pos[i * 3] = chaos[i * 3];
-        pos[i * 3 + 1] = chaos[i * 3 + 1];
-        pos[i * 3 + 2] = chaos[i * 3 + 2];
-
-        // Colors: mix of purples, blues, and some cyans for neural look
-        const colorType = rng();
-        if (colorType < 0.4) {
-          // Purple neurons
-          col[i * 3] = 0.35 + rng() * 0.2;
-          col[i * 3 + 1] = 0.08 + rng() * 0.12;
-          col[i * 3 + 2] = 0.85 + rng() * 0.15;
-        } else if (colorType < 0.7) {
-          // Blue synapses
-          col[i * 3] = 0.15 + rng() * 0.1;
-          col[i * 3 + 1] = 0.3 + rng() * 0.2;
-          col[i * 3 + 2] = 0.9 + rng() * 0.1;
-        } else if (colorType < 0.9) {
-          // Cyan highlights
-          col[i * 3] = 0.1 + rng() * 0.1;
-          col[i * 3 + 1] = 0.6 + rng() * 0.2;
-          col[i * 3 + 2] = 0.8 + rng() * 0.15;
-        } else {
-          // Bright white neuron hubs
-          col[i * 3] = 0.7 + rng() * 0.3;
-          col[i * 3 + 1] = 0.6 + rng() * 0.3;
-          col[i * 3 + 2] = 0.9 + rng() * 0.1;
-        }
-
-        // Variable sizes: hub neurons bigger
-        sz[i] = rng() < 0.05 ? 0.08 + rng() * 0.04 : 0.03 + rng() * 0.025;
+      // Brain shape
+      let bx: number, by: number, bz: number;
+      if (i >= stemStart) {
+        [bx, by, bz] = generateBrainStem(rng);
+      } else if (i >= cerebellumStart) {
+        [bx, by, bz] = generateCerebellum(rng);
+      } else {
+        const side: 1 | -1 = i < cerebellumStart / 2 ? 1 : -1;
+        [bx, by, bz] = generateHemisphere(rng, side);
       }
+      brain[i * 3] = bx * SCALE;
+      brain[i * 3 + 1] = by * SCALE;
+      brain[i * 3 + 2] = bz * SCALE;
 
-      return {
-        chaosPositions: chaos,
-        gridPositions: grid,
-        explodePositions: explode,
-        positions: pos,
-        colors: col,
-        sizes: sz,
-      };
-    }, []);
+      // Explode
+      const et = rng() * Math.PI * 2;
+      const ep = Math.acos(2 * rng() - 1);
+      const er = 14 + rng() * 12;
+      explode[i * 3] = er * Math.sin(ep) * Math.cos(et);
+      explode[i * 3 + 1] = er * Math.sin(ep) * Math.sin(et);
+      explode[i * 3 + 2] = er * Math.cos(ep);
+
+      // Start at chaos
+      pos[i * 3] = chaos[i * 3];
+      pos[i * 3 + 1] = chaos[i * 3 + 1];
+      pos[i * 3 + 2] = chaos[i * 3 + 2];
+
+      // Colors
+      const c = rng();
+      if (i >= stemStart) {
+        col[i * 3] = 0.2; col[i * 3 + 1] = 0.12; col[i * 3 + 2] = 0.45;
+      } else if (i >= cerebellumStart) {
+        col[i * 3] = 0.25; col[i * 3 + 1] = 0.18; col[i * 3 + 2] = 0.65;
+      } else if (c < 0.5) {
+        col[i * 3] = 0.35 + rng() * 0.1; col[i * 3 + 1] = 0.08 + rng() * 0.06; col[i * 3 + 2] = 0.85 + rng() * 0.1;
+      } else if (c < 0.8) {
+        col[i * 3] = 0.2 + rng() * 0.1; col[i * 3 + 1] = 0.25 + rng() * 0.12; col[i * 3 + 2] = 0.8 + rng() * 0.1;
+      } else {
+        col[i * 3] = 0.55 + rng() * 0.25; col[i * 3 + 1] = 0.45 + rng() * 0.2; col[i * 3 + 2] = 0.9;
+      }
+    }
+
+    return { chaos, brain, explode, pos, col };
+  }, []);
 
   const geometry = useMemo(() => {
     const geo = new THREE.BufferGeometry();
-    geo.setAttribute("position", new THREE.BufferAttribute(positions, 3));
-    geo.setAttribute("color", new THREE.BufferAttribute(colors, 3));
-    geo.setAttribute("size", new THREE.BufferAttribute(sizes, 1));
+    geo.setAttribute("position", new THREE.BufferAttribute(data.pos, 3));
+    geo.setAttribute("color", new THREE.BufferAttribute(data.col, 3));
     return geo;
-  }, [positions, colors, sizes]);
+  }, [data]);
 
-  // Click handler for neural firing pulse
   useEffect(() => {
-    const handleClick = (e: MouseEvent) => {
-      const canvas = document.querySelector("canvas");
-      if (!canvas) return;
-      const rect = canvas.getBoundingClientRect();
-      const x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
-      const y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
-      clickPulseRef.current = { time: performance.now() / 1000, x, y };
+    const onClick = (e: MouseEvent) => {
+      const c = document.querySelector("canvas");
+      if (!c) return;
+      const r = c.getBoundingClientRect();
+      clickPulseRef.current = {
+        time: performance.now() / 1000,
+        x: ((e.clientX - r.left) / r.width) * 2 - 1,
+        y: -((e.clientY - r.top) / r.height) * 2 + 1,
+      };
     };
-    window.addEventListener("click", handleClick);
-    return () => window.removeEventListener("click", handleClick);
+    window.addEventListener("click", onClick);
+    return () => window.removeEventListener("click", onClick);
   }, []);
 
   useFrame((state) => {
     if (!pointsRef.current) return;
-    const posAttr = pointsRef.current.geometry.attributes
-      .position as THREE.BufferAttribute;
-    const colAttr = pointsRef.current.geometry.attributes
-      .color as THREE.BufferAttribute;
-    const posArr = posAttr.array as Float32Array;
-    const colArr = colAttr.array as Float32Array;
+    const posAttr = pointsRef.current.geometry.attributes.position as THREE.BufferAttribute;
+    const colAttr = pointsRef.current.geometry.attributes.color as THREE.BufferAttribute;
+    const p = posAttr.array as Float32Array;
+    const c = colAttr.array as Float32Array;
     const t = state.clock.elapsedTime;
-    const mouseX = (mouse.x * viewport.width) / 2;
-    const mouseY = (mouse.y * viewport.height) / 2;
+    const mx = (mouse.x * viewport.width) / 2;
+    const my = (mouse.y * viewport.height) / 2;
     const mat = pointsRef.current.material as THREE.PointsMaterial;
-    const isGrid = scrollProgress > 0.3 && scrollProgress < 0.7;
+    const inBrain = scrollProgress > 0.3 && scrollProgress < 0.7;
 
-    // Click pulse timing
-    const clickAge = t - clickPulseRef.current.time;
-    const clickActive = clickAge < 2.0 && clickAge > 0;
-    const clickX = (clickPulseRef.current.x * viewport.width) / 2;
-    const clickY = (clickPulseRef.current.y * viewport.height) / 2;
+    const cAge = t - clickPulseRef.current.time;
+    const cActive = cAge < 2 && cAge > 0;
+    const cx = (clickPulseRef.current.x * viewport.width) / 2;
+    const cy = (clickPulseRef.current.y * viewport.height) / 2;
 
     for (let i = 0; i < PARTICLE_COUNT; i++) {
       const i3 = i * 3;
       let tx: number, ty: number, tz: number;
 
       if (scrollProgress < 0.35) {
-        const p = scrollProgress / 0.35;
-        // Ease in with cubic for smoother convergence
-        const ep = p * p * (3 - 2 * p);
-        tx = chaosPositions[i3] + (gridPositions[i3] - chaosPositions[i3]) * ep;
-        ty = chaosPositions[i3 + 1] + (gridPositions[i3 + 1] - chaosPositions[i3 + 1]) * ep;
-        tz = chaosPositions[i3 + 2] + (gridPositions[i3 + 2] - chaosPositions[i3 + 2]) * ep;
+        const s = scrollProgress / 0.35;
+        const e = s * s * (3 - 2 * s);
+        tx = data.chaos[i3] + (data.brain[i3] - data.chaos[i3]) * e;
+        ty = data.chaos[i3 + 1] + (data.brain[i3 + 1] - data.chaos[i3 + 1]) * e;
+        tz = data.chaos[i3 + 2] + (data.brain[i3 + 2] - data.chaos[i3 + 2]) * e;
       } else if (scrollProgress < 0.65) {
-        tx = gridPositions[i3];
-        ty = gridPositions[i3 + 1];
-        tz = gridPositions[i3 + 2];
+        tx = data.brain[i3]; ty = data.brain[i3 + 1]; tz = data.brain[i3 + 2];
       } else {
-        const p = (scrollProgress - 0.65) / 0.35;
-        const ep = p * p;
-        tx = gridPositions[i3] + (explodePositions[i3] - gridPositions[i3]) * ep;
-        ty = gridPositions[i3 + 1] + (explodePositions[i3 + 1] - gridPositions[i3 + 1]) * ep;
-        tz = gridPositions[i3 + 2] + (explodePositions[i3 + 2] - gridPositions[i3 + 2]) * ep;
+        const s = (scrollProgress - 0.65) / 0.35;
+        const e = s * s;
+        tx = data.brain[i3] + (data.explode[i3] - data.brain[i3]) * e;
+        ty = data.brain[i3 + 1] + (data.explode[i3 + 1] - data.brain[i3 + 1]) * e;
+        tz = data.brain[i3 + 2] + (data.explode[i3 + 2] - data.brain[i3 + 2]) * e;
       }
 
-      // Smooth interpolation
-      posArr[i3] += (tx - posArr[i3]) * 0.06;
-      posArr[i3 + 1] += (ty - posArr[i3 + 1]) * 0.06;
-      posArr[i3 + 2] += (tz - posArr[i3 + 2]) * 0.06;
+      p[i3] += (tx - p[i3]) * 0.06;
+      p[i3 + 1] += (ty - p[i3 + 1]) * 0.06;
+      p[i3 + 2] += (tz - p[i3 + 2]) * 0.06;
 
-      // Subtle breathing motion in brain mode 
-      if (isGrid) {
-        const breathe = Math.sin(t * 0.8) * 0.008;
-        const distFromCenter = Math.sqrt(
-          gridPositions[i3] ** 2 + gridPositions[i3 + 1] ** 2 + gridPositions[i3 + 2] ** 2
-        ) || 1;
-        posArr[i3] += (gridPositions[i3] / distFromCenter) * breathe;
-        posArr[i3 + 1] += (gridPositions[i3 + 1] / distFromCenter) * breathe;
-        posArr[i3 + 2] += (gridPositions[i3 + 2] / distFromCenter) * breathe;
+      // Gentle breathing
+      if (inBrain) {
+        const br = Math.sin(t * 0.6) * 0.004;
+        const gd = Math.sqrt(data.brain[i3] ** 2 + data.brain[i3 + 1] ** 2 + data.brain[i3 + 2] ** 2) || 1;
+        p[i3] += (data.brain[i3] / gd) * br;
+        p[i3 + 1] += (data.brain[i3 + 1] / gd) * br;
       } else {
-        // Floating motion when scattered
-        posArr[i3] += Math.sin(t * 0.3 + i * 0.01) * 0.008;
-        posArr[i3 + 1] += Math.cos(t * 0.2 + i * 0.015) * 0.008;
+        p[i3] += Math.sin(t * 0.3 + i * 0.01) * 0.005;
+        p[i3 + 1] += Math.cos(t * 0.2 + i * 0.015) * 0.005;
       }
 
-      // Neural activity wave: electrical impulse traveling across brain
-      if (isGrid) {
-        const waveSpeed = 1.5;
-        const wavePos = (t * waveSpeed) % 8 - 4; // travels left to right
-        const distFromWave = Math.abs(posArr[i3] - wavePos);
-        if (distFromWave < 0.8) {
-          const waveIntensity = 1 - distFromWave / 0.8;
-          colArr[i3] = Math.min(1, colArr[i3] + waveIntensity * 0.6);
-          colArr[i3 + 1] = Math.min(1, colArr[i3 + 1] + waveIntensity * 0.8);
-          colArr[i3 + 2] = Math.min(1, colArr[i3 + 2] + waveIntensity * 0.3);
+      // Neural wave
+      if (inBrain) {
+        const wp = (t * 1.0) % 5 - 2.5;
+        const dw = Math.abs(p[i3] - wp);
+        if (dw < 0.5) {
+          const wi = 1 - dw / 0.5;
+          c[i3] = Math.min(1, c[i3] + wi * 0.4);
+          c[i3 + 1] = Math.min(1, c[i3 + 1] + wi * 0.6);
+          c[i3 + 2] = Math.min(1, c[i3 + 2] + wi * 0.2);
         } else {
-          // Return to base color gradually
-          const baseR = i % 3 === 0 ? 0.35 : i % 3 === 1 ? 0.15 : 0.1;
-          const baseG = i % 3 === 0 ? 0.1 : i % 3 === 1 ? 0.4 : 0.65;
-          const baseB = 0.88;
-          colArr[i3] = THREE.MathUtils.lerp(colArr[i3], baseR, 0.02);
-          colArr[i3 + 1] = THREE.MathUtils.lerp(colArr[i3 + 1], baseG, 0.02);
-          colArr[i3 + 2] = THREE.MathUtils.lerp(colArr[i3 + 2], baseB, 0.02);
+          c[i3] *= 0.995; c[i3 + 1] *= 0.995;
+          c[i3 + 2] = THREE.MathUtils.lerp(c[i3 + 2], 0.82, 0.008);
         }
       }
 
-      // Click pulse: ripple expanding outward from click point
-      if (clickActive && isGrid) {
-        const cdx = posArr[i3] - clickX;
-        const cdy = posArr[i3 + 1] - clickY;
-        const cdist = Math.sqrt(cdx * cdx + cdy * cdy);
-        const rippleRadius = clickAge * 4; // expanding ring
-        const rippleWidth = 0.8;
-        const distFromRing = Math.abs(cdist - rippleRadius);
-        if (distFromRing < rippleWidth) {
-          const rippleStrength = (1 - distFromRing / rippleWidth) * Math.max(0, 1 - clickAge / 2);
-          // Bright flash on the ring
-          colArr[i3] = Math.min(1, colArr[i3] + rippleStrength);
-          colArr[i3 + 1] = Math.min(1, colArr[i3 + 1] + rippleStrength * 0.8);
-          colArr[i3 + 2] = Math.min(1, colArr[i3 + 2] + rippleStrength * 0.5);
-          // Push particles outward from ring
-          if (cdist > 0.01) {
-            const pushForce = rippleStrength * 0.15;
-            posArr[i3] += (cdx / cdist) * pushForce;
-            posArr[i3 + 1] += (cdy / cdist) * pushForce;
-          }
+      // Click ripple
+      if (cActive && inBrain) {
+        const cdx = p[i3] - cx, cdy = p[i3 + 1] - cy;
+        const cd = Math.sqrt(cdx * cdx + cdy * cdy);
+        const ring = cAge * 3;
+        const dr = Math.abs(cd - ring);
+        if (dr < 0.5) {
+          const rs = (1 - dr / 0.5) * Math.max(0, 1 - cAge / 2);
+          c[i3] = Math.min(1, c[i3] + rs * 0.7);
+          c[i3 + 1] = Math.min(1, c[i3 + 1] + rs * 0.5);
+          if (cd > 0.01) { p[i3] += (cdx / cd) * rs * 0.08; p[i3 + 1] += (cdy / cd) * rs * 0.08; }
         }
       }
 
-      // Mouse proximity — strong repulsion + glow halo
-      const dx = posArr[i3] - mouseX;
-      const dy = posArr[i3 + 1] - mouseY;
+      // Mouse interaction
+      const dx = p[i3] - mx, dy = p[i3 + 1] - my;
       const dist = Math.sqrt(dx * dx + dy * dy);
-      const interactRadius = isGrid ? 2.5 : 1.5;
-      if (dist < interactRadius) {
-        const normForce = 1 - dist / interactRadius;
-
-        // Bright glow — neurons "fire" near cursor
-        const glow = isGrid ? normForce * 2 : normForce * 0.5;
-        colArr[i3] = Math.min(1, colArr[i3] + glow * 0.8);
-        colArr[i3 + 1] = Math.min(1, colArr[i3 + 1] + glow * 1.2);
-        colArr[i3 + 2] = Math.min(1, colArr[i3 + 2] + glow * 0.4);
-
-        // Position displacement — push particles along the brain surface
-        if (isGrid && dist > 0.01) {
-          const repelForce = normForce * normForce * 0.3;
-          posArr[i3] += (dx / dist) * repelForce;
-          posArr[i3 + 1] += (dy / dist) * repelForce;
-          // Also push in Z slightly for depth effect
-          posArr[i3 + 2] += normForce * 0.05;
+      const ir = inBrain ? 1.8 : 1.0;
+      if (dist < ir) {
+        const nf = 1 - dist / ir;
+        const gl = inBrain ? nf * 1.5 : nf * 0.3;
+        c[i3] = Math.min(1, c[i3] + gl * 0.6);
+        c[i3 + 1] = Math.min(1, c[i3 + 1] + gl * 0.8);
+        c[i3 + 2] = Math.min(1, c[i3 + 2] + gl * 0.3);
+        if (inBrain && dist > 0.01) {
+          p[i3] += (dx / dist) * nf * nf * 0.2;
+          p[i3 + 1] += (dy / dist) * nf * nf * 0.2;
         }
       }
     }
 
-    // Fade during explode
+    // Opacity fade
     if (scrollProgress > 0.75) {
-      mat.opacity = THREE.MathUtils.lerp(
-        mat.opacity,
-        Math.max(0, 1 - (scrollProgress - 0.75) / 0.25),
-        0.1
-      );
+      mat.opacity = THREE.MathUtils.lerp(mat.opacity, Math.max(0, 1 - (scrollProgress - 0.75) / 0.25), 0.1);
     } else {
       mat.opacity = THREE.MathUtils.lerp(mat.opacity, 0.9, 0.1);
     }
@@ -462,66 +403,52 @@ function ParticleSystem({ scrollProgress }: { scrollProgress: number }) {
     posAttr.needsUpdate = true;
     colAttr.needsUpdate = true;
 
-    // Slow rotation — brain slowly turns so you see its 3D shape
-    pointsRef.current.rotation.y = t * 0.04;
-    pointsRef.current.rotation.x = Math.sin(t * 0.02) * 0.08;
-    // Slight tilt to show the brain from a ¾ angle
-    pointsRef.current.rotation.z = 0.1;
+    // Very slow oscillating rotation to show 3D shape
+    pointsRef.current.rotation.y = Math.sin(t * 0.06) * 0.3;
+    // Tilt slightly forward so you see the top (the two hemispheres)
+    pointsRef.current.rotation.x = -0.35;
   });
 
   return (
     <>
       <points ref={pointsRef} geometry={geometry}>
-        <pointsMaterial
-          vertexColors
-          size={0.045}
-          sizeAttenuation
-          transparent
-          opacity={0.9}
-          blending={THREE.AdditiveBlending}
-          depthWrite={false}
-        />
+        <pointsMaterial vertexColors size={0.035} sizeAttenuation transparent opacity={0.9} blending={THREE.AdditiveBlending} depthWrite={false} />
       </points>
-      <SynapticConnections positions={positions} scrollProgress={scrollProgress} />
+      <SynapticConnections positions={data.pos} scrollProgress={scrollProgress} />
     </>
   );
 }
 
-/* ---------- Exported Component ---------- */
-export default function ParticleField({
-  scrollProgress: externalProgress,
-}: {
-  scrollProgress?: number;
-}) {
-  const [internalProgress, setInternalProgress] = useState(0);
-  const containerRef = useRef<HTMLDivElement>(null);
-  const progress =
-    externalProgress !== undefined ? externalProgress : internalProgress;
+/* ---------- Export ---------- */
+export default function ParticleField({ scrollProgress: ext }: { scrollProgress?: number }) {
+  const [ip, setIp] = useState(0);
+  const ref = useRef<HTMLDivElement>(null);
+  const progress = ext !== undefined ? ext : ip;
 
   useEffect(() => {
-    if (externalProgress !== undefined) return;
-    const handleScroll = () => {
-      if (!containerRef.current) return;
-      const rect = containerRef.current.getBoundingClientRect();
-      const total = containerRef.current.offsetHeight - window.innerHeight;
-      if (total <= 0) return;
-      setInternalProgress(Math.max(0, Math.min(1, -rect.top / total)));
+    if (ext !== undefined) return;
+    const h = () => {
+      if (!ref.current) return;
+      const r = ref.current.getBoundingClientRect();
+      const t = ref.current.offsetHeight - window.innerHeight;
+      if (t <= 0) return;
+      setIp(Math.max(0, Math.min(1, -r.top / t)));
     };
-    window.addEventListener("scroll", handleScroll, { passive: true });
-    return () => window.removeEventListener("scroll", handleScroll);
-  }, [externalProgress]);
+    window.addEventListener("scroll", h, { passive: true });
+    return () => window.removeEventListener("scroll", h);
+  }, [ext]);
 
   return (
-    <div ref={containerRef} className="absolute inset-0 z-0">
+    <div ref={ref} className="absolute inset-0 z-0">
       <Canvas
-        camera={{ position: [0, 0.5, 6], fov: 55 }}
+        camera={{ position: [0, 1.5, 5], fov: 45 }}
         dpr={[1, 1.5]}
         gl={{ antialias: true, alpha: true }}
         style={{ background: "transparent" }}
       >
-        <ambientLight intensity={0.4} />
-        <pointLight position={[3, 3, 3]} intensity={0.3} color="#7c4dff" />
-        <pointLight position={[-3, -1, 2]} intensity={0.2} color="#00bcd4" />
+        <ambientLight intensity={0.35} />
+        <pointLight position={[3, 3, 4]} intensity={0.2} color="#7c4dff" />
+        <pointLight position={[-2, -1, 3]} intensity={0.15} color="#4fc3f7" />
         <ParticleSystem scrollProgress={progress} />
       </Canvas>
     </div>

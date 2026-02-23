@@ -3,7 +3,11 @@
 import { motion } from "framer-motion";
 import { useState, useEffect } from "react";
 
-const navItems = ["Platform", "Solutions", "Intelligence Flow", "Docs"];
+const navItems = [
+  { label: "Platform", href: "#dashboard" },
+  { label: "Intelligence Flow", href: "#insight-flow" },
+  { label: "Capabilities", href: "#capabilities" },
+];
 
 const calmEase = [0.22, 1, 0.36, 1] as const;
 
@@ -29,7 +33,8 @@ export default function Navbar() {
     >
       <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
         {/* Logo */}
-        <motion.div
+        <motion.a
+          href="#hero"
           className="flex items-center gap-2"
           whileHover={{ scale: 1.02 }}
           transition={{ duration: 0.2 }}
@@ -42,14 +47,14 @@ export default function Navbar() {
           <span className="text-white font-semibold text-lg tracking-tight font-[family-name:var(--font-space-grotesk)]">
             xai
           </span>
-        </motion.div>
+        </motion.a>
 
         {/* Nav Items */}
         <div className="hidden md:flex items-center gap-1">
           {navItems.map((item, i) => (
             <motion.a
-              key={item}
-              href={`#${item.toLowerCase().replace(/\s+/g, "-")}`}
+              key={item.label}
+              href={item.href}
               initial={{ opacity: 0, y: -10 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{
@@ -59,7 +64,7 @@ export default function Navbar() {
               }}
               className="relative px-4 py-2 text-sm text-[#8888a0] hover:text-white transition-colors duration-300 rounded-lg group"
             >
-              <span className="relative z-10">{item}</span>
+              <span className="relative z-10">{item.label}</span>
               <motion.div
                 className="absolute inset-0 rounded-lg bg-white/[0.04]"
                 initial={{ opacity: 0 }}
@@ -70,17 +75,8 @@ export default function Navbar() {
           ))}
         </div>
 
-        {/* CTA */}
-        <motion.button
-          initial={{ opacity: 0, scale: 0.9 }}
-          animate={{ opacity: 1, scale: 1 }}
-          transition={{ duration: 0.5, delay: 0.5, ease: calmEase }}
-          whileHover={{ scale: 1.04 }}
-          whileTap={{ scale: 0.97 }}
-          className="px-5 py-2 text-sm font-medium text-white rounded-lg bg-gradient-to-r from-[#4d19e6] to-[#7c4dff] hover:shadow-[0_0_24px_rgba(77,25,230,0.4)] transition-shadow duration-300 cursor-pointer"
-        >
-          Log in
-        </motion.button>
+        {/* Spacer to keep layout balanced (login button removed) */}
+        <div className="w-20" />
       </div>
     </motion.nav>
   );

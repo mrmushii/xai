@@ -4,6 +4,12 @@ import { useState, useCallback, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import dynamic from "next/dynamic";
 import type { AnalysisResult } from "@/types/analysis";
+import * as pdfjsLib from "pdfjs-dist";
+
+// Configure PDF.js worker
+if (typeof window !== "undefined") {
+  pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.mjs`;
+}
 
 const InsightCrystal = dynamic(
   () => import("@/components/three/InsightCrystal"),
@@ -46,13 +52,48 @@ export default function Dashboard() {
     setProcessingStage("Reading file...");
 
     try {
-      // Read file content
-      const content = await new Promise<string>((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = (e) => resolve(e.target?.result as string);
-        reader.onerror = () => reject(new Error("Failed to read file"));
-        reader.readAsText(file);
-      });
+      // Read file content — handle PDFs specially
+      let content: string;
+      const isPdf =
+        file.type === "application/pdf" ||
+        file.name.toLowerCase().endsWith(".pdf");
+
+      if (isPdf) {
+        // Read PDF as ArrayBuffer, then extract text with pdfjs-dist
+        setProcessingStage("Parsing PDF document...");
+        const arrayBuffer = await new Promise<ArrayBuffer>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = (e) => resolve(e.target?.result as ArrayBuffer);
+          reader.onerror = () => reject(new Error("Failed to read PDF file"));
+          reader.readAsArrayBuffer(file);
+        });
+
+        const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+        const pages: string[] = [];
+        for (let i = 1; i <= pdf.numPages; i++) {
+          const page = await pdf.getPage(i);
+          const textContent = await page.getTextContent();
+          const pageText = textContent.items
+            .map((item) => ("str" in item ? item.str : ""))
+            .join(" ");
+          pages.push(pageText);
+        }
+        content = pages.join("\n\n--- Page Break ---\n\n");
+
+        if (!content.trim()) {
+          throw new Error(
+            "Could not extract text from this PDF. It may be a scanned/image-based PDF."
+          );
+        }
+      } else {
+        // Text-based files (CSV, JSON, TXT, etc.)
+        content = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = (e) => resolve(e.target?.result as string);
+          reader.onerror = () => reject(new Error("Failed to read file"));
+          reader.readAsText(file);
+        });
+      }
 
       setProcessingProgress(25);
       setProcessingStage("Uploading to neural engine...");

@@ -4,6 +4,7 @@ import dynamic from "next/dynamic";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import { useEffect, useState, useRef } from "react";
+import { motion, AnimatePresence } from "framer-motion";
 
 const ParticleField = dynamic(
   () => import("@/components/three/ParticleField"),
@@ -24,10 +25,148 @@ const CapabilitiesSection = dynamic(
   { ssr: false }
 );
 
+/* ---------- Brain Hotspot Data ---------- */
+const brainHotspots = [
+  {
+    id: "nlp",
+    label: "NLP Engine",
+    x: 35,  // % from left
+    y: 30,  // % from top
+    title: "Natural Language Processing",
+    description:
+      "Groq-powered Llama 3.3 70B model processes natural language queries, extracts entities, and classifies intent in under 1ms latency.",
+    stat: "128K context window",
+    icon: "🧬",
+  },
+  {
+    id: "analysis",
+    label: "Deep Analysis",
+    x: 65,
+    y: 30,
+    title: "Pattern Recognition Engine",
+    description:
+      "Identifies anomalies, correlations, and hidden patterns across millions of data points using geometric synthesis algorithms.",
+    stat: "98.4% accuracy",
+    icon: "🔬",
+  },
+  {
+    id: "ingest",
+    label: "Data Ingestion",
+    x: 30,
+    y: 55,
+    title: "Multi-Format Ingestion",
+    description:
+      "Parallel processing pipelines normalize PDF, CSV, JSON, and XML streams in real-time. Supports unstructured data up to 500MB.",
+    stat: "14.2 TB/s throughput",
+    icon: "📥",
+  },
+  {
+    id: "output",
+    label: "Insight Generation",
+    x: 70,
+    y: 55,
+    title: "Structured Output Engine",
+    description:
+      "Synthesizes raw analysis into actionable metrics, anomaly reports, and automated workflows ready for immediate deployment.",
+    stat: "12 insight types",
+    icon: "📊",
+  },
+  {
+    id: "core",
+    label: "Neural Core",
+    x: 50,
+    y: 42,
+    title: "Central Processing Hub",
+    description:
+      "Orchestrates all subsystems — routing queries, managing context windows, and coordinating parallel inference across 8.4M active nodes.",
+    stat: "< 0.8ms end-to-end",
+    icon: "⚡",
+  },
+];
+
+/* ---------- Hotspot Component ---------- */
+function BrainHotspot({
+  hotspot,
+}: {
+  hotspot: (typeof brainHotspots)[0];
+}) {
+  const [hovered, setHovered] = useState(false);
+
+  return (
+    <div
+      className="absolute group"
+      style={{
+        left: `${hotspot.x}%`,
+        top: `${hotspot.y}%`,
+        transform: "translate(-50%, -50%)",
+      }}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+    >
+      {/* Pulsing dot */}
+      <motion.div
+        initial={{ scale: 0, opacity: 0 }}
+        animate={{ scale: 1, opacity: 1 }}
+        exit={{ scale: 0, opacity: 0 }}
+        className="relative cursor-pointer"
+      >
+        {/* Outer pulse ring */}
+        <div className="absolute inset-0 w-5 h-5 -m-[2px] rounded-full border border-[rgba(77,25,230,0.4)] animate-ping" />
+        {/* Inner dot */}
+        <div className="w-4 h-4 rounded-full bg-[#4d19e6] border-2 border-[rgba(255,255,255,0.3)] shadow-[0_0_12px_rgba(77,25,230,0.6)] hover:bg-[#7c4dff] transition-colors duration-200" />
+        {/* Label */}
+        <div className="absolute left-1/2 -translate-x-1/2 top-6 whitespace-nowrap text-[10px] text-[#7c4dff] tracking-wider font-medium opacity-70">
+          {hotspot.label}
+        </div>
+      </motion.div>
+
+      {/* Tooltip popup */}
+      <AnimatePresence>
+        {hovered && (
+          <motion.div
+            initial={{ opacity: 0, y: 8, scale: 0.95 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 8, scale: 0.95 }}
+            transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
+            className="absolute z-50 w-72 pointer-events-none"
+            style={{
+              left: hotspot.x > 50 ? "auto" : "50%",
+              right: hotspot.x > 50 ? "50%" : "auto",
+              top: hotspot.y > 50 ? "auto" : "calc(100% + 16px)",
+              bottom: hotspot.y > 50 ? "calc(100% + 16px)" : "auto",
+              transform: `translateX(${hotspot.x > 50 ? "50%" : "-50%"})`,
+            }}
+          >
+            <div className="glass-card p-4 shadow-2xl shadow-[rgba(77,25,230,0.15)] border border-[rgba(77,25,230,0.25)]">
+              <div className="flex items-center gap-2 mb-2">
+                <span className="text-lg">{hotspot.icon}</span>
+                <h4 className="text-sm font-bold text-white font-[family-name:var(--font-space-grotesk)]">
+                  {hotspot.title}
+                </h4>
+              </div>
+              <p className="text-xs text-[#8888a0] leading-relaxed mb-3">
+                {hotspot.description}
+              </p>
+              <div className="flex items-center gap-2 pt-2 border-t border-[rgba(255,255,255,0.05)]">
+                <div className="w-1.5 h-1.5 rounded-full bg-[#00e676] animate-pulse" />
+                <span className="text-[10px] text-[#00e676] font-bold tracking-widest font-[family-name:var(--font-space-grotesk)]">
+                  {hotspot.stat}
+                </span>
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
+
+/* ---------- Main Component ---------- */
 export default function ClientPage() {
   const [particleProgress, setParticleProgress] = useState(0);
   const [particleVisible, setParticleVisible] = useState(true);
   const [gridInteractive, setGridInteractive] = useState(false);
+  const [showHotspots, setShowHotspots] = useState(false);
   const heroRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -47,10 +186,13 @@ export default function ClientPage() {
       const progress = Math.max(0, Math.min(1, scrolled / total));
       setParticleProgress(progress);
 
-      // Enable pointer events when text is gone and grid is formed
+      // Enable pointer events when text is gone and brain is formed
       setGridInteractive(progress > 0.25 && progress < 0.7);
 
-      // Particles visible while hero is in view, fade after hero ends
+      // Show hotspots only when brain is fully formed (narrower range)
+      setShowHotspots(progress > 0.38 && progress < 0.62);
+
+      // Particles visible while hero is in view
       const heroBottom = rect.bottom;
       setParticleVisible(heroBottom > -100);
     };
@@ -62,7 +204,7 @@ export default function ClientPage() {
 
   return (
     <main className="min-h-screen bg-[#07070d] overflow-x-hidden">
-      {/* Fixed particle background — follows scroll across sections */}
+      {/* Fixed particle background */}
       {particleVisible && (
         <div
           className={`fixed inset-0 z-0 transition-opacity duration-300 ${
@@ -73,9 +215,26 @@ export default function ClientPage() {
         </div>
       )}
 
+      {/* Brain hotspot overlay — fixed, only during brain phase */}
+      <AnimatePresence>
+        {showHotspots && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.5 }}
+            className="fixed inset-0 z-10 pointer-events-auto"
+          >
+            {brainHotspots.map((hotspot) => (
+              <BrainHotspot key={hotspot.id} hotspot={hotspot} />
+            ))}
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       <Navbar />
 
-      {/* Hero wrapper — provides scroll height for particle phases */}
+      {/* Hero wrapper */}
       <div ref={heroRef}>
         <HeroSection />
       </div>
