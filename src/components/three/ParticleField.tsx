@@ -2,7 +2,7 @@
 
 import { useRef, useMemo, useState, useEffect } from "react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
-import { Html } from "@react-three/drei";
+import { Html, Grid } from "@react-three/drei";
 import * as THREE from "three";
 
 const PARTICLE_COUNT = 7500;
@@ -368,18 +368,26 @@ function KnowledgeFruits({
             <meshBasicMaterial color={color} transparent opacity={0.8} />
             
             {activeNode === i && (
-              <Html distanceFactor={10} position={[0, 0.3, 0]} center zIndexRange={[100, 0]}>
-                <div className="w-64 p-4 rounded-xl border border-white/20 bg-black/40 backdrop-blur-md shadow-[0_0_30px_rgba(0,255,150,0.3)] text-white relative flex flex-col pointer-events-auto">
+              <Html distanceFactor={8} position={[0, 0, 0]} center zIndexRange={[100, 0]}>
+                <div className="w-72 p-5 rounded-md border border-[#00ff41]/50 bg-black/80 backdrop-blur-xl shadow-[0_0_20px_rgba(0,255,65,0.4)] text-[#00ff41] relative flex flex-col pointer-events-auto font-mono">
                   <button 
                     onClick={(e) => { e.stopPropagation(); setActiveNode(null); }}
-                    className="absolute top-2 right-2 text-white/60 hover:text-white transition-colors cursor-pointer"
+                    className="absolute top-2 right-3 text-[#00ff41]/60 hover:text-white transition-colors cursor-pointer text-lg"
                   >
-                    ✕
+                    [X]
                   </button>
-                  <h3 className="text-xl font-bold mb-2 bg-gradient-to-r from-cyan-400 to-green-400 bg-clip-text text-transparent">{domain.title}</h3>
-                  <p className="text-sm text-gray-200 leading-relaxed">{domain.desc}</p>
-                  <div className="mt-3 text-xs uppercase tracking-wider text-cyan-500 font-semibold animate-pulse cursor-pointer">
-                    Explore Node →
+                  <div className="uppercase text-[10px] tracking-widest text-cyan-400 mb-1 opacity-80">
+                    {`// KNOWLEDGE_NODE_${domain.id.toUpperCase()}`}
+                  </div>
+                  <h3 className="text-xl font-bold mb-3 text-white drop-shadow-[0_0_8px_rgba(255,255,255,0.8)]">
+                    {domain.title}
+                  </h3>
+                  <p className="text-sm text-gray-300 leading-relaxed border-l-2 border-[#00ff41]/40 pl-3">
+                    {domain.desc}
+                  </p>
+                  <div className="mt-4 text-xs font-bold tracking-wider text-[#00ff41] hover:text-white transition-colors cursor-pointer flex items-center gap-2 group">
+                    <span className="w-full h-[1px] bg-gradient-to-r from-[#00ff41]/50 to-transparent"></span>
+                    <span className="whitespace-nowrap group-hover:-translate-x-1 transition-transform">&gt; INITIALIZE</span>
                   </div>
                 </div>
               </Html>
@@ -698,6 +706,21 @@ export default function ParticleField({ scrollProgress: ext }: { scrollProgress?
         <ambientLight intensity={0.4} />
         <pointLight position={[2, 3, 4]} intensity={0.3} color="#7c4dff" />
         <pointLight position={[-2, -2, 3]} intensity={0.2} color="#00e676" />
+        
+        {/* Matrix Floor Grid */}
+        <Grid 
+          position={[0, -3.5, 0]} 
+          args={[30, 30]} 
+          cellColor="#00ff41" 
+          sectionColor="#00ff41" 
+          sectionSize={1.5}
+          cellSize={0.5}
+          fadeDistance={15} 
+          fadeStrength={2} 
+          cellThickness={0.4} 
+          sectionThickness={1} 
+        />
+        
         <ParticleSystem scrollProgress={progress} activeNode={activeNode} setActiveNode={setActiveNode} />
       </Canvas>
     </div>
