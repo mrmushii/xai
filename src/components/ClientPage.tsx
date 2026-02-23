@@ -27,6 +27,7 @@ const CapabilitiesSection = dynamic(
 export default function ClientPage() {
   const [particleProgress, setParticleProgress] = useState(0);
   const [particleVisible, setParticleVisible] = useState(true);
+  const [gridInteractive, setGridInteractive] = useState(false);
   const heroRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -46,6 +47,9 @@ export default function ClientPage() {
       const progress = Math.max(0, Math.min(1, scrolled / total));
       setParticleProgress(progress);
 
+      // Enable pointer events when text is gone and grid is formed
+      setGridInteractive(progress > 0.25 && progress < 0.7);
+
       // Particles visible while hero is in view, fade after hero ends
       const heroBottom = rect.bottom;
       setParticleVisible(heroBottom > -100);
@@ -60,7 +64,11 @@ export default function ClientPage() {
     <main className="min-h-screen bg-[#07070d] overflow-x-hidden">
       {/* Fixed particle background — follows scroll across sections */}
       {particleVisible && (
-        <div className="fixed inset-0 z-0 pointer-events-none">
+        <div
+          className={`fixed inset-0 z-0 transition-opacity duration-300 ${
+            gridInteractive ? "pointer-events-auto" : "pointer-events-none"
+          }`}
+        >
           <ParticleField scrollProgress={particleProgress} />
         </div>
       )}

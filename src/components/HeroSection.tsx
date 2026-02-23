@@ -9,8 +9,6 @@ if (typeof window !== "undefined") {
   gsap.registerPlugin(ScrollTrigger);
 }
 
-const calmEase = [0.22, 1, 0.36, 1] as const;
-
 const stats = [
   { label: "LATENCY", value: "<1ms" },
   { label: "ACTIVE NODES", value: "8.4M" },
@@ -24,12 +22,51 @@ export default function HeroSection() {
   const headlineRef = useRef<HTMLHeadingElement>(null);
   const subtitleRef = useRef<HTMLParagraphElement>(null);
   const ctaRef = useRef<HTMLDivElement>(null);
+  const fileHintRef = useRef<HTMLParagraphElement>(null);
   const statsRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const el = sectionRef.current;
     if (!el) return;
 
+    const elements = [
+      { ref: badgeRef, delay: 0.3, y: 20 },
+      { ref: headlineRef, delay: 0.5, y: 30 },
+      { ref: subtitleRef, delay: 0.8, y: 20 },
+      { ref: ctaRef, delay: 1.1, y: 20 },
+      { ref: fileHintRef, delay: 1.4, y: 0 },
+      { ref: statsRef, delay: 1.6, y: 20 },
+    ];
+
+    // Entrance animation (runs once on load)
+    elements.forEach(({ ref, delay, y }) => {
+      if (ref.current) {
+        gsap.set(ref.current, { opacity: 0, y });
+        gsap.to(ref.current, {
+          opacity: 1,
+          y: 0,
+          duration: 0.8,
+          delay,
+          ease: "power2.out",
+        });
+      }
+    });
+
+    // Stat children stagger
+    if (statsRef.current) {
+      const statItems = statsRef.current.children;
+      gsap.set(statItems, { opacity: 0, y: 10 });
+      gsap.to(statItems, {
+        opacity: 1,
+        y: 0,
+        duration: 0.5,
+        stagger: 0.1,
+        delay: 1.7,
+        ease: "power2.out",
+      });
+    }
+
+    // Scroll-driven exit — uses fromTo so it fully reverses on scroll back up
     const tl = gsap.timeline({
       scrollTrigger: {
         trigger: el,
@@ -39,21 +76,53 @@ export default function HeroSection() {
       },
     });
 
-    // Text exits in first 40% of hero scroll
     if (badgeRef.current) {
-      tl.to(badgeRef.current, { y: -80, opacity: 0, duration: 0.3 }, 0);
+      tl.fromTo(
+        badgeRef.current,
+        { y: 0, opacity: 1 },
+        { y: -80, opacity: 0, duration: 0.3 },
+        0
+      );
     }
     if (headlineRef.current) {
-      tl.to(headlineRef.current, { y: -60, opacity: 0, duration: 0.35 }, 0.02);
+      tl.fromTo(
+        headlineRef.current,
+        { y: 0, opacity: 1 },
+        { y: -60, opacity: 0, duration: 0.35 },
+        0.02
+      );
     }
     if (subtitleRef.current) {
-      tl.to(subtitleRef.current, { y: -40, opacity: 0, duration: 0.3 }, 0.05);
+      tl.fromTo(
+        subtitleRef.current,
+        { y: 0, opacity: 1 },
+        { y: -40, opacity: 0, duration: 0.3 },
+        0.05
+      );
     }
     if (ctaRef.current) {
-      tl.to(ctaRef.current, { y: -30, opacity: 0, duration: 0.3 }, 0.08);
+      tl.fromTo(
+        ctaRef.current,
+        { y: 0, opacity: 1 },
+        { y: -30, opacity: 0, duration: 0.3 },
+        0.08
+      );
+    }
+    if (fileHintRef.current) {
+      tl.fromTo(
+        fileHintRef.current,
+        { y: 0, opacity: 1 },
+        { y: -20, opacity: 0, duration: 0.25 },
+        0.09
+      );
     }
     if (statsRef.current) {
-      tl.to(statsRef.current, { y: 40, opacity: 0, duration: 0.3 }, 0.1);
+      tl.fromTo(
+        statsRef.current,
+        { y: 0, opacity: 1 },
+        { y: 40, opacity: 0, duration: 0.3 },
+        0.1
+      );
     }
 
     return () => {
@@ -70,57 +139,42 @@ export default function HeroSection() {
       id="hero"
       className="relative min-h-[250vh]"
     >
-      {/* Sticky content layer (text only — particles are now global) */}
+      {/* Sticky content layer */}
       <div className="sticky top-0 w-full h-screen z-10">
-        {/* Radial gradient overlay */}
-        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,transparent_30%,#07070d_75%)] pointer-events-none" />
-
         {/* Hero Content */}
         <div className="absolute inset-0 flex flex-col items-center justify-center z-20 px-6">
           {/* Badge */}
-          <motion.div
+          <div
             ref={badgeRef}
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.8, delay: 0.3, ease: calmEase }}
-            className="mb-6 px-4 py-1.5 rounded-full border border-[rgba(77,25,230,0.3)] bg-[rgba(77,25,230,0.08)] text-[#7c4dff] text-xs font-medium tracking-widest uppercase"
+            className="mb-6 px-4 py-1.5 rounded-full border border-[rgba(77,25,230,0.3)] bg-[rgba(77,25,230,0.08)] text-[#7c4dff] text-xs font-medium tracking-widest uppercase opacity-0"
           >
             Intelligence Workspace
-          </motion.div>
+          </div>
 
           {/* Headline */}
-          <motion.h1
+          <h1
             ref={headlineRef}
-            initial={{ opacity: 0, y: 30 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 1, delay: 0.5, ease: calmEase }}
-            className="text-5xl md:text-7xl lg:text-8xl font-bold text-center leading-[0.95] tracking-tight max-w-5xl font-[family-name:var(--font-space-grotesk)]"
+            className="text-5xl md:text-7xl lg:text-8xl font-bold text-center leading-[0.95] tracking-tight max-w-5xl font-[family-name:var(--font-space-grotesk)] opacity-0"
           >
             <span className="text-white">Raw Data to</span>
             <br />
             <span className="gradient-text">Actionable Insight</span>
-          </motion.h1>
+          </h1>
 
           {/* Subtitle */}
-          <motion.p
+          <p
             ref={subtitleRef}
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.8, delay: 0.8, ease: calmEase }}
-            className="mt-6 text-lg md:text-xl text-[#8888a0] text-center max-w-2xl leading-relaxed"
+            className="mt-6 text-lg md:text-xl text-[#8888a0] text-center max-w-2xl leading-relaxed opacity-0"
           >
             Transform unstructured information into structured intelligence.
             Our neural engine evolves with your data, synthesizing millions of
             points into clear strategic directives.
-          </motion.p>
+          </p>
 
           {/* CTA Buttons */}
-          <motion.div
+          <div
             ref={ctaRef}
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.8, delay: 1.1, ease: calmEase }}
-            className="mt-10 flex gap-4"
+            className="mt-10 flex gap-4 opacity-0"
           >
             <motion.a
               href="#dashboard"
@@ -144,37 +198,22 @@ export default function HeroSection() {
             >
               View Demo
             </motion.a>
-          </motion.div>
+          </div>
 
-          <motion.p
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ delay: 1.4, duration: 0.6 }}
-            className="mt-4 text-xs text-[#555570]"
+          <p
+            ref={fileHintRef}
+            className="mt-4 text-xs text-[#555570] opacity-0"
           >
             PDF, CSV, JSON supported up to 500MB
-          </motion.p>
+          </p>
 
           {/* Stats Bar */}
-          <motion.div
+          <div
             ref={statsRef}
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.8, delay: 1.6, ease: calmEase }}
-            className="mt-16 flex gap-8 md:gap-12"
+            className="mt-16 flex gap-8 md:gap-12 opacity-0"
           >
-            {stats.map((stat, i) => (
-              <motion.div
-                key={stat.label}
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{
-                  duration: 0.5,
-                  delay: 1.7 + i * 0.1,
-                  ease: calmEase,
-                }}
-                className="text-center"
-              >
+            {stats.map((stat) => (
+              <div key={stat.label} className="text-center">
                 <div className="text-[10px] tracking-[0.2em] text-[#555570] uppercase mb-1">
                   {stat.label}
                 </div>
@@ -185,9 +224,9 @@ export default function HeroSection() {
                 >
                   {stat.value}
                 </div>
-              </motion.div>
+              </div>
             ))}
-          </motion.div>
+          </div>
         </div>
       </div>
     </section>
