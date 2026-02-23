@@ -6,7 +6,7 @@ import Footer from "@/components/Footer";
 import { useEffect, useState, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 
-const ParticleField = dynamic(
+const ParticleField = dynamic<{ scrollProgress?: number }>(
   () => import("@/components/three/ParticleField"),
   { ssr: false }
 );
@@ -29,58 +29,58 @@ const CapabilitiesSection = dynamic(
 const brainHotspots = [
   {
     id: "nlp",
-    label: "NLP Engine",
-    x: 35,  // % from left
-    y: 30,  // % from top
+    label: "NLP",
+    x: 35,
+    y: 25,
     title: "Natural Language Processing",
     description:
       "Groq-powered Llama 3.3 70B model processes natural language queries, extracts entities, and classifies intent in under 1ms latency.",
     stat: "128K context window",
-    icon: "🧬",
+    icon: "💬",
   },
   {
-    id: "analysis",
-    label: "Deep Analysis",
+    id: "cv",
+    label: "Computer Vision",
     x: 65,
-    y: 30,
-    title: "Pattern Recognition Engine",
+    y: 25,
+    title: "Visual Intelligence",
     description:
       "Identifies anomalies, correlations, and hidden patterns across millions of data points using geometric synthesis algorithms.",
     stat: "98.4% accuracy",
-    icon: "🔬",
+    icon: "👁️",
   },
   {
-    id: "ingest",
-    label: "Data Ingestion",
-    x: 30,
-    y: 55,
-    title: "Multi-Format Ingestion",
+    id: "ml",
+    label: "Machine Learning",
+    x: 25,
+    y: 45,
+    title: "Core ML Engine",
     description:
-      "Parallel processing pipelines normalize PDF, CSV, JSON, and XML streams in real-time. Supports unstructured data up to 500MB.",
+      "Adaptive learning pipelines that evolve with your data. Supports supervised, unsupervised, and semi-supervised approaches.",
     stat: "14.2 TB/s throughput",
-    icon: "📥",
+    icon: "⚙️",
   },
   {
-    id: "output",
-    label: "Insight Generation",
-    x: 70,
-    y: 55,
-    title: "Structured Output Engine",
+    id: "genai",
+    label: "Generative AI",
+    x: 50,
+    y: 20,
+    title: "Content Synthesis",
     description:
-      "Synthesizes raw analysis into actionable metrics, anomaly reports, and automated workflows ready for immediate deployment.",
-    stat: "12 insight types",
-    icon: "📊",
+      "State-of-the-art generative models that transform raw analysis into structured reports, summaries, and actionable workflows.",
+    stat: "12 output formats",
+    icon: "✨",
   },
   {
     id: "core",
     label: "Neural Core",
     x: 50,
-    y: 42,
-    title: "Central Processing Hub",
+    y: 65,
+    title: "Central Processing Trunk",
     description:
-      "Orchestrates all subsystems — routing queries, managing context windows, and coordinating parallel inference across 8.4M active nodes.",
+      "Orchestrates all AI subsystems — routing queries, managing context, and coordinating parallel inference across 8.4M active nodes.",
     stat: "< 0.8ms end-to-end",
-    icon: "⚡",
+    icon: "🌳",
   },
 ];
 
