@@ -9,7 +9,7 @@
 
 **Experience the future of data analysis through immersive 3D spatial reasoning and real-time AI synthesis.**
 
-[✨ Demo](https://xai-demo.vercel.app) • [📚 Documentation](#-core-capabilities) • [🚀 Get Started](#-getting-started)
+[✨ Demo](https://xai-weld-alpha.vercel.app/) • [📚 Documentation](#-core-capabilities) • [🚀 Get Started](#-getting-started)
 
 </div>
 
