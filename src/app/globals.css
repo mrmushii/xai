@@ -136,3 +136,12 @@ body::before {
   -webkit-text-fill-color: transparent;
   background-clip: text;
 }
+
+/* Hide scrollbar for mobile tab bars */
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}

@@ -210,6 +210,44 @@ export default function Dashboard() {
         </motion.div>
 
         {/* Dashboard Layout */}
+        {/* Mobile Tab Bar — visible below lg */}
+        <div className="lg:hidden mb-4">
+          <div className="glass-card p-2 flex items-center gap-1 overflow-x-auto scrollbar-hide">
+            {sidebarItems.map((item) => (
+              <button
+                key={item.label}
+                onClick={() => {
+                  if (analysisData || item.label === "Settings") {
+                    setActiveTab(item.label);
+                  }
+                }}
+                className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm whitespace-nowrap transition-all duration-200 cursor-pointer shrink-0 ${
+                  activeTab === item.label
+                    ? "bg-[rgba(77,25,230,0.2)] text-white"
+                    : analysisData || item.label === "Settings"
+                    ? "text-[#8888a0] hover:text-white"
+                    : "text-[#555570] cursor-not-allowed opacity-50"
+                }`}
+              >
+                <span className="text-base">{item.icon}</span>
+                <span className="text-xs font-medium">{item.label}</span>
+              </button>
+            ))}
+            {analysisData && (
+              <button
+                onClick={() => {
+                  setAnalysisData(null);
+                  setActiveTab("Overview");
+                  setFileName("");
+                }}
+                className="flex items-center gap-1 px-3 py-2 rounded-lg text-xs text-[#7c4dff] border border-[rgba(77,25,230,0.2)] hover:bg-[rgba(77,25,230,0.08)] transition-colors cursor-pointer whitespace-nowrap shrink-0 ml-auto"
+              >
+                + New
+              </button>
+            )}
+          </div>
+        </div>
+
         <div className="flex gap-4">
           {/* Sidebar */}
           <motion.aside
@@ -332,7 +370,7 @@ export default function Dashboard() {
                       {processingStage}
                     </p>
                     <p className="text-sm text-[#8888a0]">{fileName}</p>
-                    <div className="w-80 mx-auto h-1.5 rounded-full bg-[rgba(255,255,255,0.05)] overflow-hidden">
+                    <div className="w-full max-w-80 mx-auto h-1.5 rounded-full bg-[rgba(255,255,255,0.05)] overflow-hidden">
                       <motion.div
                         className="h-full rounded-full bg-gradient-to-r from-[#4d19e6] to-[#7c4dff]"
                         animate={{ width: `${processingProgress}%` }}
